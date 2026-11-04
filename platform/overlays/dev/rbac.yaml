@@ -1,0 +1,19 @@
+# Who may do what in pet-portal-dev (proposal section 6, RBAC).
+# Developers can change dev (edit); operators administer it.
+# Groups come from your identity provider or client certificates
+# (O=pet-portal:developers); see docs/runbook.md, "Access".
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developers
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: edit }
+subjects:
+  - { apiGroup: rbac.authorization.k8s.io, kind: Group, name: "pet-portal:developers" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: operators
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: admin }
+subjects:
+  - { apiGroup: rbac.authorization.k8s.io, kind: Group, name: "pet-portal:operators" }

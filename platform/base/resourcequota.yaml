@@ -1,0 +1,18 @@
+# Caps what one environment can take from the shared cluster, so a runaway
+# autoscaler cannot starve the other environment or the monitoring stack.
+# Alert PortalQuotaNearlyUsed fires at 90 %. Sizes are set in the overlays.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: portal-quota
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 3Gi
+    limits.memory: 5Gi
+    pods: "40"
+    persistentvolumeclaims: "6"
+    services.loadbalancers: "0"
+    services.nodeports: "0"

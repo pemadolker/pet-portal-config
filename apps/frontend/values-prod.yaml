@@ -1,0 +1,13 @@
+# prod: manual sync in Argo CD. image.tag is promoted from dev by a reviewed pull request.
+image:
+  tag: "1.0.0"   # changed only by the promote workflow (a reviewed pull request)
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  triggers:
+    # CPU-bound work (serving files): scale at 70 % of the CPU request.
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"

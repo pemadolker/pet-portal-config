@@ -1,0 +1,26 @@
+# 6. pet (core): Pet records listed by shelter staff; publishes pet.created/updated/deleted.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: pet
+group: core
+
+resources:
+  requests: { cpu: 100m, memory: 96Mi }
+  limits: { memory: 192Mi }
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+# Services this one calls (sets <NAME>_URL and opens egress).
+upstreams:
+  - adoption
+  - shelter
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+    - adoption

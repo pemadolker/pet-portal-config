@@ -1,0 +1,52 @@
+{{- if .Values.migration.enabled }}
+# Database migration, run by Argo CD before the new pods replace the old ones
+# (PreSync hook). Same image as the service; applies migrations/*.sql that are
+# not yet recorded in <schema>.schema_migrations. Pods carry the
+# pet-portal.bt/db-job label, which the platform's allow-db-jobs NetworkPolicy
+# lets reach DNS and PostgreSQL even on the very first sync, before this
+# service's own NetworkPolicy exists.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ms.name" . }}-migrate
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ms.name" . }}
+        app.kubernetes.io/component: migration
+        app.kubernetes.io/part-of: pet-portal
+        pet-portal.bt/postgres-client: "true"
+        pet-portal.bt/db-job: "true"
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: {{ include "ms.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "/app/libs/common/migrate.js"]
+          env:
+            - name: SERVICE_NAME
+              value: {{ include "ms.name" . | quote }}
+            {{- include "ms.dbEnv" . | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            {{- include "ms.containerSecurity" . | nindent 12 }}
+{{- end }}

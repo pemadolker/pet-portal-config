@@ -1,0 +1,22 @@
+# App of apps: Entry point for pet-portal-dev: platform objects, then the 13 backend services, then the gateway and frontend (sync waves). Synced automatically with self-heal.
+# Apply once with:  kubectl apply -n argocd -f argocd/root-dev.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-dev
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/CHANGE-ME/pet-portal-config.git
+    targetRevision: main
+    path: argocd/apps
+    helm:
+      valueFiles: [values.yaml, values-dev.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry: { limit: 10, backoff: { duration: 10s, factor: 2, maxDuration: 3m } }

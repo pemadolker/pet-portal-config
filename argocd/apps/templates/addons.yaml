@@ -1,0 +1,61 @@
+{{- range .Values.addons }}
+---
+# {{ .name }} {{ .version }}: chart from its upstream repository, values from this repository.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+  labels: { pet-portal.bt/layer: addon }
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: platform
+  sources:
+    - repoURL: {{ .repo }}
+      chart: {{ .chart }}
+      targetRevision: {{ .version | quote }}
+      helm:
+        releaseName: {{ .name }}
+        valueFiles: [$values/{{ .values }}]
+    - repoURL: {{ $.Values.repoURL }}
+      targetRevision: {{ $.Values.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      {{- if .serverSideApply }}
+      - ServerSideApply=true            # large CRDs exceed the client-side apply annotation limit
+      {{- end }}
+    retry: { limit: 10, backoff: { duration: 15s, factor: 2, maxDuration: 5m } }
+{{- end }}
+{{- range .Values.kustomizeApps }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+  labels: { pet-portal.bt/layer: addon }
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: platform
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: {{ $.Values.targetRevision }}
+    path: {{ .path }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .namespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]
+    retry: { limit: 10, backoff: { duration: 15s, factor: 2, maxDuration: 5m } }
+{{- end }}

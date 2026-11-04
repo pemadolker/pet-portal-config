@@ -1,0 +1,20 @@
+# 8. shelter (core): Shelters, contact details and admin approval; publishes shelter.updated.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: shelter
+group: core
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+    - signup
+    - pet
+    - adoption
+    - review

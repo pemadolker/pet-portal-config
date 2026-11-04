@@ -1,0 +1,4 @@
+bootstrap/.secrets/
+evidence/
+observability/alerts/rules.extracted.yaml
+__pycache__/

@@ -1,0 +1,16 @@
+{{- if ge (int (include "ms.minReplicas" .)) 2 }}
+# Voluntary disruptions (node drain, cluster upgrade) always leave at least one
+# pod of this service running (E7).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ms.name" . }}
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      {{- include "ms.selector" . | nindent 6 }}
+{{- end }}

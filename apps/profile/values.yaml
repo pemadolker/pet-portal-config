@@ -1,0 +1,17 @@
+# 5. profile (identity): Personal details for adopters, staff and admins.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: profile
+group: identity
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+    - signup
+    - login
+    - adoption
+    - review

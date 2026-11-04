@@ -1,0 +1,22 @@
+# App of apps: Cluster add-ons (ingress, metrics-server, KEDA, monitoring, logs, traces) and the etcd registry. Synced automatically.
+# Apply once with:  kubectl apply -n argocd -f argocd/root-cluster.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-cluster
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/CHANGE-ME/pet-portal-config.git
+    targetRevision: main
+    path: argocd/apps
+    helm:
+      valueFiles: [values.yaml, values-cluster.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry: { limit: 10, backoff: { duration: 10s, factor: 2, maxDuration: 3m } }

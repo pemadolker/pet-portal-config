@@ -1,0 +1,14 @@
+# Defaults for any container that does not state its own resources, so the
+# quota above can always be enforced.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: portal-defaults
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 50m, memory: 64Mi }
+      default: { memory: 128Mi }
+      max: { memory: 1Gi }

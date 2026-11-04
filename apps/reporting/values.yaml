@@ -1,0 +1,16 @@
+# 15. reporting (async): Summaries for staff and admin from events.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: reporting
+group: async
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway

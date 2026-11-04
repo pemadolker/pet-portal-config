@@ -1,0 +1,48 @@
+# 1. frontend (edge): Web interface for adopters, staff and admin (static site on nginx).
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: frontend
+group: edge
+
+nodeOptions: ""                 # nginx, not Node.js
+securityContext: { runAsUser: 101, runAsGroup: 101 }   # nginx-unprivileged
+resources:
+  requests: { cpu: 50m, memory: 16Mi }
+  limits: { memory: 64Mi }
+probes: { livenessPath: /health, readinessPath: /health }
+registry: { enabled: false }
+tracing: { enabled: false }
+
+# nginx connection metrics through the exporter sidecar.
+metrics: { enabled: true, port: metrics }
+extraContainers:
+  - name: nginx-exporter
+    image: nginx/nginx-prometheus-exporter:1.5.3
+    args: ["--nginx.scrape-uri=http://127.0.0.1:8080/stub_status"]
+    ports: [{ name: metrics, containerPort: 9113 }]
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { memory: 32Mi }
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities: { drop: ["ALL"] }
+
+# Runtime config replaces config.js in the image, so one image serves dev and prod.
+configFiles:
+  - name: config.js
+    mountPath: /usr/share/nginx/html/config.js
+    content: |
+      window.__PORTAL_CONFIG__ = {
+        apiBase: '/api',
+        environment: '{{ .Values.global.environment }}',
+        mailUrl: 'https://mail.{{ .Values.global.ingressHost }}'
+      };
+
+networkPolicy:
+  allowFromIngress: true
+
+ingress:
+  enabled: true
+  paths:
+    - { path: /, pathType: Prefix }

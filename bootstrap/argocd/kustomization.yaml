@@ -1,0 +1,53 @@
+# Argo CD v3.6.0, installed once by bootstrap.sh. After that, Argo CD manages
+# everything else from this repository.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.6.0/manifests/install.yaml
+  - ingress.yaml
+patches:
+  # TLS ends at the ingress controller, so the Argo CD server speaks plain HTTP inside the cluster.
+  - target: { kind: ConfigMap, name: argocd-cmd-params-cm }
+    patch: |-
+      - op: add
+        path: /data
+        value:
+          server.insecure: "true"
+          application.namespaces: argocd
+  - target: { kind: ConfigMap, name: argocd-cm }
+    patch: |-
+      - op: add
+        path: /data
+        value:
+          # Applications report the health of what they deploy, so the app-of-apps
+          # sync waves wait for each wave to be Healthy before starting the next.
+          resource.customizations.health.argoproj.io_Application: |
+            hs = {}
+            hs.status = "Progressing"
+            hs.message = ""
+            if obj.status ~= nil and obj.status.health ~= nil then
+              hs.status = obj.status.health.status
+              if obj.status.health.message ~= nil then hs.message = obj.status.health.message end
+            end
+            return hs
+          # A KEDA ScaledObject is healthy when it is Ready.
+          resource.customizations.health.keda.sh_ScaledObject: |
+            hs = { status = "Progressing", message = "Waiting for KEDA" }
+            if obj.status ~= nil and obj.status.conditions ~= nil then
+              for _, c in ipairs(obj.status.conditions) do
+                if c.type == "Ready" and c.status == "True" then hs.status = "Healthy"; hs.message = c.message end
+                if c.type == "Ready" and c.status == "False" then hs.status = "Degraded"; hs.message = c.message end
+              end
+            end
+            return hs
+          timeout.reconciliation: 60s
+          url: https://argocd.portal.local
+  - target: { kind: ConfigMap, name: argocd-rbac-cm }
+    patch: |-
+      - op: add
+        path: /data
+        value:
+          policy.default: role:readonly
+          scopes: "[groups]"

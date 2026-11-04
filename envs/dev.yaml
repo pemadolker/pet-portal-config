@@ -1,0 +1,11 @@
+# Settings shared by every service in pet-portal-dev.
+global:
+  environment: dev
+  imageRegistry: ghcr.io/CHANGE-ME/pet-portal     # bootstrap/configure.sh sets your GitHub org
+  ingressHost: dev.portal.local
+  logLevel: debug
+  tracing:
+    endpoint: http://otel-collector.observability.svc:4318
+    sampleRatio: "1"                              # dev: keep every trace
+  registry:
+    endpoints: http://registry-etcd-0.registry-etcd.registry.svc:2379,http://registry-etcd-1.registry-etcd.registry.svc:2379,http://registry-etcd-2.registry-etcd.registry.svc:2379

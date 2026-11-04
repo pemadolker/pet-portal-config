@@ -1,0 +1,29 @@
+# 10. adoption (core): Applications and availability; the one-winner rule. The hot path.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: adoption
+group: core
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 256Mi }
+nodeOptions: --max-old-space-size=160
+
+database:
+  enabled: true
+  poolMax: 10          # hot path: more connections per pod
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+# Services this one calls (sets <NAME>_URL and opens egress).
+upstreams:
+  - pet
+  - shelter
+  - profile
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+    - pet

@@ -1,0 +1,8 @@
+# Shared by every root application.
+repoURL: https://github.com/CHANGE-ME/pet-portal-config.git   # bootstrap/configure.sh sets this
+targetRevision: main
+
+addons: []        # values-cluster.yaml
+kustomizeApps: [] # values-cluster.yaml
+portal:
+  enabled: false  # values-dev.yaml / values-prod.yaml

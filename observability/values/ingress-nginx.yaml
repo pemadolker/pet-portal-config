@@ -1,0 +1,38 @@
+# ingress-nginx 4.15.1 (chart) on the Kind control-plane node, bound to host
+# ports 80 and 443 (the Kind way; see bootstrap/kind-cluster.yaml).
+# Note: the community ingress-nginx project is retired upstream; it still installs
+# and works for this lab. Every route is a standard Ingress object, so switching
+# to Traefik needs no change to the services (proposal section 6).
+controller:
+  hostPort:
+    enabled: true
+  service:
+    type: NodePort
+  nodeSelector:
+    ingress-ready: "true"
+  tolerations:
+    - { key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule }
+  publishService: { enabled: false }
+  extraArgs:
+    publish-status-address: localhost
+  watchIngressWithoutClass: false
+  ingressClassResource:
+    default: true
+  admissionWebhooks:
+    enabled: true
+  config:
+    use-forwarded-headers: "false"      # trust only the real client address, never a client-sent header
+    enable-real-ip: "false"
+    log-format-escape-json: "true"
+    log-format-upstream: '{"time":"$time_iso8601","level":"info","msg":"ingress","status":$status,"method":"$request_method","path":"$uri","host":"$host","ms":$request_time,"upstream":"$proxy_upstream_name","requestId":"$req_id","ip":"$remote_addr"}'
+    ssl-protocols: "TLSv1.2 TLSv1.3"
+    hsts: "true"
+    server-tokens: "false"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels: { release: kube-prometheus-stack }
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 256Mi }

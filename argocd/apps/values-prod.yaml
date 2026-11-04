@@ -1,0 +1,23 @@
+portal:
+  enabled: true
+  environment: prod
+  autoSync: false           # prod: nothing deploys until an operator syncs it (scripts/sync-prod.sh)
+  # Sync waves (proposal section 7): platform objects and data stores first, then the
+  # 13 backend services, then the gateway and frontend that expose them.
+  platformWave: 0
+  services:
+    - { name: signup, wave: 1 }
+    - { name: login, wave: 1 }
+    - { name: profile, wave: 1 }
+    - { name: pet, wave: 1 }
+    - { name: search, wave: 1 }
+    - { name: shelter, wave: 1 }
+    - { name: favorites, wave: 1 }
+    - { name: adoption, wave: 1 }
+    - { name: review, wave: 1 }
+    - { name: history, wave: 1 }
+    - { name: notification, wave: 1 }
+    - { name: email-worker, wave: 1 }
+    - { name: reporting, wave: 1 }
+    - { name: api-gateway, wave: 2 }
+    - { name: frontend, wave: 2 }

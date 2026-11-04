@@ -1,0 +1,188 @@
+# The service's pods. Rolling updates never take a pod away before its
+# replacement is Ready (maxUnavailable: 0), which with the readiness probe and
+# the app's graceful shutdown gives zero failed requests during a release (E5).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ms.name" . }}
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "ms.selector" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "ms.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+        {{- with (include "ms.clientLabels" . | trim) }}
+        {{- . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if .Values.configFiles }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "ms.name" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          nodeTaintsPolicy: Honor          # a cordoned/drained node does not count (E7)
+          labelSelector:
+            matchLabels:
+              {{- include "ms.selector" . | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: {{ include "ms.name" . }}
+          image: {{ include "ms.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.command }}
+          command: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - name: SERVICE_NAME
+              value: {{ include "ms.name" . | quote }}
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+            - name: DEPLOY_ENV
+              value: {{ .Values.global.environment | quote }}
+            - name: PORT
+              value: {{ .Values.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.global.logLevel | quote }}
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            {{- if .Values.nodeOptions }}
+            - name: NODE_OPTIONS
+              value: {{ .Values.nodeOptions | quote }}
+            {{- end }}
+            {{- if .Values.registry.enabled }}
+            - name: ETCD_ENDPOINTS
+              value: {{ .Values.global.registry.endpoints | quote }}
+            {{- end }}
+            {{- if .Values.tracing.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.global.tracing.endpoint | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .Values.global.tracing.sampleRatio | quote }}
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            {{- end }}
+            {{- if .Values.database.enabled }}
+            {{- include "ms.dbEnv" . | nindent 12 }}
+            {{- end }}
+            {{- range .Values.upstreams }}
+            - name: {{ include "ms.urlVar" . }}
+              value: {{ printf "http://%s:8080" . | quote }}
+            {{- end }}
+            {{- range .Values.secretFiles }}
+            {{- if .env }}
+            - name: {{ .env }}
+              value: {{ .path | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.secretEnv }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef: { name: {{ .secret }}, key: {{ .key }} }
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ tpl (toString $v) $ | quote }}
+            {{- end }}
+          startupProbe:
+            httpGet: { path: {{ .Values.probes.livenessPath }}, port: http }
+            periodSeconds: 2
+            failureThreshold: {{ .Values.probes.startupFailureThreshold }}
+          livenessProbe:
+            httpGet: { path: {{ .Values.probes.livenessPath }}, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: {{ .Values.probes.readinessPath }}, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "ms.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- range .Values.secretFiles }}
+            - name: secret-{{ .secret }}-{{ .key | replace "." "-" }}
+              mountPath: {{ .path }}
+              subPath: {{ .key }}
+              readOnly: true
+            {{- end }}
+            {{- range .Values.configFiles }}
+            - name: config
+              mountPath: {{ .mountPath }}
+              subPath: {{ .name }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        {{- range .Values.secretFiles }}
+        - name: secret-{{ .secret }}-{{ .key | replace "." "-" }}
+          secret:
+            secretName: {{ .secret }}
+            defaultMode: 0440
+            items:
+              - { key: {{ .key }}, path: {{ .key }} }
+        {{- end }}
+        {{- if .Values.configFiles }}
+        - name: config
+          configMap:
+            name: {{ include "ms.name" . }}-config
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

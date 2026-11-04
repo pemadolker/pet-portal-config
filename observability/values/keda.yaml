@@ -1,0 +1,20 @@
+# KEDA 2.21.0: one tool for all seven autoscaled services (proposal section 8).
+# It reads Prometheus (adoption request rate), Redis Streams (email-worker lag)
+# and CPU, and creates a normal HorizontalPodAutoscaler for each ScaledObject.
+resources:
+  operator:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  metricServer:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  webhooks:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+prometheus:
+  operator:
+    enabled: true
+    serviceMonitor: { enabled: true, additionalLabels: { release: kube-prometheus-stack } }
+  metricServer:
+    enabled: true
+    serviceMonitor: { enabled: true, additionalLabels: { release: kube-prometheus-stack } }

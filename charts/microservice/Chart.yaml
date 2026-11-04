@@ -1,0 +1,14 @@
+apiVersion: v2
+name: microservice
+description: >-
+  The one generic chart used by all 15 Pet Adoption Portal services. Each service
+  differs only in its values file (apps/<service>/values.yaml); see values.yaml
+  here for every option and its default.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.29.0-0"
+maintainers:
+  - name: Dechen Wangdra Sherpa
+  - name: Tandin Zangmo
+  - name: Pema Dolker

@@ -1,0 +1,23 @@
+{{- if .Values.metrics.enabled }}
+# Tells Prometheus (kube-prometheus-stack) to scrape this service. Prometheus adds
+# the service, namespace and pod labels that dashboards and the KEDA query use.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ms.name" . }}
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ms.name" . }}
+  endpoints:
+    - port: {{ .Values.metrics.port }}
+      path: {{ .Values.metrics.path }}
+      interval: {{ .Values.metrics.interval }}
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_pet_portal_bt_group]
+          targetLabel: group
+{{- end }}

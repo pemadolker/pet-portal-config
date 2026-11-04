@@ -1,0 +1,67 @@
+# Nightly logical backup of the whole portal database (pg_dump, custom format),
+# kept for 7 days on its own volume. Also run by hand before failure drills:
+#   kubectl -n pet-portal-prod create job --from=cronjob/postgres-backup backup-before-drill
+# Restore steps are in docs/runbook.md.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 2Gi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+spec:
+  schedule: "30 2 * * *"          # 02:30 every night
+  timeZone: Asia/Thimphu
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres-backup
+            pet-portal.bt/db-job: "true"
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            fsGroup: 70
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              command:
+                - sh
+                - -ec
+                - |
+                  f=/backups/petportal-$(date +%Y%m%d-%H%M%S).dump
+                  pg_dump -Fc -f "$f" petportal
+                  echo "backup written: $f ($(du -h "$f" | cut -f1))"
+                  find /backups -name 'petportal-*.dump' -mtime +7 -delete
+              env:
+                - { name: PGHOST, value: postgres }
+                - { name: PGUSER, value: postgres }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: postgres-superuser, key: password } }
+              resources:
+                requests: { cpu: 20m, memory: 32Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: postgres-backups }

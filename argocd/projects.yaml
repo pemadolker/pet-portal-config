@@ -1,0 +1,62 @@
+# Argo CD projects: what each group of applications may deploy, from where, to where.
+#   platform   - cluster add-ons, the registry, and each environment's platform objects
+#                (namespaces, quotas, policies, data stores). May create cluster-scoped objects.
+#   pet-portal - the 15 services. Only from the config repository, only into the two
+#                portal namespaces, and never quotas, limits or RBAC (those belong to platform).
+# Roles: developers may sync dev; only operators may sync prod (manual approval).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: Cluster add-ons and shared platform objects
+  sourceRepos:
+    - https://github.com/CHANGE-ME/pet-portal-config.git
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://grafana-community.github.io/helm-charts
+    - https://open-telemetry.github.io/opentelemetry-helm-charts
+    - https://kedacore.github.io/charts
+    - https://kubernetes.github.io/ingress-nginx
+    - https://kubernetes-sigs.github.io/metrics-server/
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: "*" }
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }
+  orphanedResources:
+    warn: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: pet-portal
+  namespace: argocd
+spec:
+  description: The 15 Pet Adoption Portal services
+  sourceRepos:
+    - https://github.com/CHANGE-ME/pet-portal-config.git
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: pet-portal-dev }
+    - { server: https://kubernetes.default.svc, namespace: pet-portal-prod }
+  clusterResourceWhitelist: []          # services create nothing cluster-wide
+  namespaceResourceBlacklist:
+    - { group: "", kind: ResourceQuota }
+    - { group: "", kind: LimitRange }
+    - { group: rbac.authorization.k8s.io, kind: Role }
+    - { group: rbac.authorization.k8s.io, kind: RoleBinding }
+  orphanedResources:
+    warn: true
+  roles:
+    - name: developer
+      description: Sync and roll back dev; read prod
+      policies:
+        - p, proj:pet-portal:developer, applications, get, pet-portal/*, allow
+        - p, proj:pet-portal:developer, applications, sync, pet-portal/*-dev, allow
+        - p, proj:pet-portal:developer, applications, action/*, pet-portal/*-dev, allow
+      groups: ["pet-portal:developers"]
+    - name: operator
+      description: Approve prod releases by syncing them
+      policies:
+        - p, proj:pet-portal:operator, applications, *, pet-portal/*, allow
+      groups: ["pet-portal:operators"]

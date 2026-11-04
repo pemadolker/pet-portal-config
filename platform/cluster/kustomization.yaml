@@ -1,0 +1,7 @@
+# Cluster-wide objects shared by both environments: the namespaces for the
+# platform tools (with their Pod Security levels) and the etcd service registry.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - registry-etcd.yaml

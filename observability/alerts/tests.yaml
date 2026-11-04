@@ -1,0 +1,75 @@
+# promtool unit tests for the alert rules (run by CI):
+#   ./scripts/validate.sh   (extracts the rule groups and runs `promtool test rules`)
+rule_files:
+  - rules.extracted.yaml
+evaluation_interval: 30s
+tests:
+  - name: adoption failing triggers ServiceHighErrorRate after 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'http_requests_total{namespace="pet-portal-prod",service="adoption",status_code="201"}'
+        values: '0+60x30'
+      - series: 'http_requests_total{namespace="pet-portal-prod",service="adoption",status_code="500"}'
+        values: '0+20x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceHighErrorRate
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ServiceHighErrorRate
+        exp_alerts:
+          - exp_labels: { severity: critical, namespace: pet-portal-prod, service: adoption }
+            exp_annotations:
+              summary: "adoption in pet-portal-prod: 25% of requests fail"
+              description: More than 5 % of requests to this service returned 5xx for 5 minutes.
+              runbook: docs/runbook.md#servicehigherrorrate
+
+  - name: a quiet service with one error does not page anyone
+    interval: 30s
+    input_series:
+      - series: 'http_requests_total{namespace="pet-portal-prod",service="review",status_code="500"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ServiceHighErrorRate
+        exp_alerts: []
+
+  - name: adoption pinned at 6 of 6 pods
+    interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="pet-portal-prod",horizontalpodautoscaler="keda-hpa-adoption"}'
+        values: '2 4 6 6 6 6 6 6 6 6'
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="pet-portal-prod",horizontalpodautoscaler="keda-hpa-adoption"}'
+        values: '6x10'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: AdoptionAtMaxReplicas
+        exp_alerts:
+          - exp_labels: { severity: warning, namespace: pet-portal-prod, horizontalpodautoscaler: keda-hpa-adoption }
+            exp_annotations:
+              summary: "adoption in pet-portal-prod has been at its maximum of 6 pods for 5 minutes"
+              description: Load is above what the scaling plan allows. Latency will rise next. See the capacity plan.
+              runbook: docs/runbook.md#adoptionatmaxreplicas
+
+  - name: losing one registry member warns, quorum is still there
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="registry",service="registry-etcd",pod="registry-etcd-0"}'
+        values: '1x10'
+      - series: 'up{namespace="registry",service="registry-etcd",pod="registry-etcd-1"}'
+        values: '1x10'
+      - series: 'up{namespace="registry",service="registry-etcd",pod="registry-etcd-2"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+      - series: 'etcd_server_has_leader{namespace="registry",pod="registry-etcd-0"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RegistryMemberDown
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Only 2 of 3 etcd registry members are up (quorum needs 2)"
+              runbook: docs/runbook.md#registrymemberdown
+      - eval_time: 4m
+        alertname: RegistryNoLeader
+        exp_alerts: []

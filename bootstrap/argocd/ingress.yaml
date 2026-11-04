@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+spec:
+  ingressClassName: nginx
+  tls:
+    - { hosts: [argocd.portal.local], secretName: portal-tls }
+  rules:
+    - host: argocd.portal.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: argocd-server, port: { name: http } } }

@@ -1,0 +1,55 @@
+# OpenTelemetry Collector 0.178.2 (chart), contrib image for tail sampling.
+# Services send every span over OTLP/HTTP; the collector decides what Tempo keeps:
+# every trace with an error, every trace slower than 500 ms, and 20 % of the rest.
+# That keeps the evidence for E10 (the slow or failing request) without storing everything.
+mode: deployment
+replicaCount: 1
+fullnameOverride: otel-collector
+image:
+  repository: otel/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { memory: 384Mi }
+presets:
+  kubernetesAttributes:
+    enabled: true            # adds k8s.namespace.name, k8s.pod.name, k8s.deployment.name to spans
+ports:
+  metrics: { enabled: true }
+serviceMonitor:
+  enabled: true
+  extraLabels: { release: kube-prometheus-stack }
+config:
+  receivers:
+    otlp:
+      protocols:
+        http: { endpoint: "0.0.0.0:4318" }
+        grpc: { endpoint: "0.0.0.0:4317" }
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    tail_sampling:
+      decision_wait: 10s
+      num_traces: 20000
+      policies:
+        - { name: errors, type: status_code, status_code: { status_codes: [ERROR] } }
+        - { name: slow, type: latency, latency: { threshold_ms: 500 } }
+        - { name: sample-rest, type: probabilistic, probabilistic: { sampling_percentage: 20 } }
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+  exporters:
+    otlp:
+      endpoint: tempo.observability.svc:4317
+      tls: { insecure: true }
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, tail_sampling, batch]
+        exporters: [otlp]
+      metrics: null
+      logs: null

@@ -1,0 +1,121 @@
+# Defaults for one Pet Adoption Portal service.
+# A service's own file (apps/<service>/values.yaml) only states what differs.
+# Values are layered in this order (later wins):
+#   charts/microservice/values.yaml  ->  envs/<env>.yaml  ->  apps/<svc>/values.yaml  ->  apps/<svc>/values-<env>.yaml
+
+# --- settings shared by every service in an environment (envs/<env>.yaml) ---
+global:
+  environment: dev                       # dev | prod; also the etcd key prefix /pet-portal/<env>/
+  imageRegistry: ghcr.io/CHANGE-ME/pet-portal
+  ingressHost: dev.portal.local
+  logLevel: info
+  tracing:
+    endpoint: http://otel-collector.observability.svc:4318
+    sampleRatio: "1"                     # send every span; the collector's tail sampler decides what Tempo keeps
+  registry:
+    endpoints: http://registry-etcd-0.registry-etcd.registry.svc:2379,http://registry-etcd-1.registry-etcd.registry.svc:2379,http://registry-etcd-2.registry-etcd.registry.svc:2379
+
+# --- this service ---
+name: ""                                 # required, for example: adoption
+group: core                              # edge | identity | core | async (a label, used by dashboards)
+
+image:
+  repository: ""                         # defaults to <global.imageRegistry>/<name>
+  tag: ""                                # required; CI writes the Git commit hash into values-<env>.yaml
+  pullPolicy: IfNotPresent
+
+replicas: 1                              # ignored when autoscaling.enabled (KEDA owns the count)
+port: 8080
+command: []                              # override the image entrypoint (rarely needed)
+args: []
+
+# Node.js services: heap capped below the memory limit so V8 collects garbage before the
+# container is OOM-killed. The frontend (nginx) sets nodeOptions: "".
+nodeOptions: --max-old-space-size=96
+
+resources:
+  requests: { cpu: 50m, memory: 96Mi }
+  limits: { memory: 192Mi }              # no CPU limit on purpose: throttling hurts latency; requests drive scheduling and HPA
+
+env: {}                                  # extra plain environment variables
+secretEnv: []                            # - { name: BOOTSTRAP_ADMIN_PASSWORD, secret: bootstrap-admin, key: password }
+secretFiles: []                          # - { secret: jwt-keys, key: private.pem, path: /run/secrets/jwt-private.pem, env: JWT_PRIVATE_KEY_FILE }
+configFiles: []                          # - { name: config.js, mountPath: /usr/share/nginx/html/config.js, content: "..." }
+
+database:
+  enabled: false                         # true: env for this service's own schema and role, plus the postgres client label
+  schema: ""                             # defaults to name (the role is svc_<schema>)
+  host: postgres
+  name: petportal
+  passwordSecret: postgres-service-passwords
+  poolMax: 5
+
+redis:
+  enabled: false
+  url: redis://redis:6379
+
+registry:
+  enabled: true                          # register in etcd with a lease
+
+tracing:
+  enabled: true
+
+# Other portal services this one calls. Sets <NAME>_URL and opens egress to them.
+upstreams: []
+
+# Extra egress rules (raw NetworkPolicy egress entries), for example email-worker -> mailpit.
+extraEgress: []
+
+probes:
+  livenessPath: /health
+  readinessPath: /ready
+  startupFailureThreshold: 30            # x 2 s = up to 60 s to start
+
+securityContext:
+  runAsUser: 1000                        # "node" user in node:22-alpine; nginx-unprivileged uses 101
+  runAsGroup: 1000
+
+terminationGracePeriodSeconds: 30        # > SHUTDOWN_DELAY_MS (5 s) + longest request
+
+metrics:
+  enabled: true
+  port: http                             # port name to scrape
+  path: /metrics
+  interval: 15s
+
+networkPolicy:
+  enabled: true
+  allowFrom: []                          # portal services allowed to call this one
+  allowFromIngress: false                # true for frontend and api-gateway only
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 4
+  pollingInterval: 15
+  cooldownPeriod: 300
+  scaleDownStabilizationSeconds: 300     # do not drop pods the moment a rush pauses
+  scaleUpStabilizationSeconds: 0
+  triggers: []                           # KEDA triggers; strings may use {{ .Release.Namespace }}
+
+pdb:
+  minAvailable: 1                        # rendered only when the service runs 2+ pods
+
+topologySpread:
+  enabled: true                          # spread replicas over the 3 worker nodes
+
+migration:
+  enabled: false                         # PreSync Job: node /app/libs/common/migrate.js
+  activeDeadlineSeconds: 300
+
+ingress:
+  enabled: false
+  className: nginx
+  paths: []                              # - { path: /api, pathType: Prefix }
+  tlsSecretName: portal-tls
+  annotations: {}
+
+extraContainers: []
+extraVolumes: []
+extraVolumeMounts: []
+podAnnotations: {}

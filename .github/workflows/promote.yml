@@ -1,0 +1,33 @@
+# Promotes what runs in dev to prod by opening a pull request that copies the
+# image tags. Merging the PR changes Git; an operator then syncs prod
+# (scripts/sync-prod.sh or the Argo CD UI). Two people see every prod release.
+name: promote
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Services to promote (space separated), or 'all'"
+        default: all
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy dev tags to prod
+        run: |
+          if [ "${{ inputs.services }}" = "all" ]; then scripts/set-image-tag.sh prod --from-dev --all | tee changes.txt
+          else scripts/set-image-tag.sh prod --from-dev ${{ inputs.services }} | tee changes.txt; fi
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/${{ github.run_number }}
+          title: "prod: promote ${{ inputs.services }} from dev"
+          body: |
+            Copies the image tags running in dev to prod.
+
+            After merging, sync prod: `scripts/sync-prod.sh` (or Sync in the Argo CD UI).
+            Roll back with `git revert` of the merge commit and sync again.
+          commit-message: "prod: promote ${{ inputs.services }} from dev"
+          add-paths: apps/*/values-prod.yaml

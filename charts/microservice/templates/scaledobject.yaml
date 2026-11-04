@@ -1,0 +1,31 @@
+{{- if .Values.autoscaling.enabled }}
+# KEDA creates and manages a HorizontalPodAutoscaler (keda-hpa-<name>) from this.
+# Triggers come from the service's values: request rate from Prometheus
+# (adoption), Redis stream lag (email-worker) or CPU (edge and read services).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "ms.name" . }}
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "ms.name" . }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  pollingInterval: {{ .Values.autoscaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: {{ .Values.autoscaling.scaleUpStabilizationSeconds }}
+          policies:
+            - { type: Pods, value: 2, periodSeconds: 15 }
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.autoscaling.scaleDownStabilizationSeconds }}
+          policies:
+            - { type: Pods, value: 1, periodSeconds: 60 }
+  triggers:
+    {{- tpl (toYaml (required "autoscaling.triggers must not be empty" .Values.autoscaling.triggers)) . | nindent 4 }}
+{{- end }}

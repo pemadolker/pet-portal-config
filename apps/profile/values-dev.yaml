@@ -1,0 +1,4 @@
+# dev: one pod, auto-synced by Argo CD. CI writes image.tag here after every build of main.
+image:
+  tag: "1.0.0"   # CI replaces this with the Git commit hash after each build of main
+replicas: 1

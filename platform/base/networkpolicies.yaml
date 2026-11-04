@@ -1,0 +1,37 @@
+# Deny by default (proposal section 6). Nothing in the namespace can send or
+# receive traffic unless a more specific policy allows it. Each service's own
+# policy comes from the Helm chart; the data stores' policies are in data/.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Database jobs (each service's migration Job, db-bootstrap, backups) run
+# before the service's own NetworkPolicy exists, so they get DNS and PostgreSQL here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-jobs
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      pet-portal.bt/db-job: "true"
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: postgres } }
+      ports:
+        - { port: 5432, protocol: TCP }

@@ -1,0 +1,16 @@
+# 9. favorites (core): Pets each adopter has saved.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: favorites
+group: core
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway

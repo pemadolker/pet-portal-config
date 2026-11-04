@@ -1,0 +1,17 @@
+# prod: manual sync in Argo CD. image.tag is promoted from dev by a reviewed pull request.
+image:
+  tag: "1.0.0"   # changed only by the promote workflow (a reviewed pull request)
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  triggers:
+    # Request rate rises before CPU does, so scaling starts earlier.
+    # 50 req/s per pod is the starting value; E3 measures one pod's capacity
+    # and this is then set to 70 % of it.
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+        query: sum(rate(http_requests_total{service="adoption",namespace="{{ .Release.Namespace }}"}[1m]))
+        threshold: "50"
+        activationThreshold: "1"

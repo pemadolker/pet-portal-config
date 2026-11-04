@@ -1,0 +1,70 @@
+{{- if .Values.portal.enabled }}
+{{- $p := .Values.portal }}
+{{- $env := $p.environment }}
+---
+# Platform objects for pet-portal-{{ $env }}: namespace, quota, limits, network
+# policies, RBAC, PostgreSQL (+ db-bootstrap), Redis, Mailpit.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-{{ $env }}
+  namespace: argocd
+  labels: { pet-portal.bt/environment: {{ $env }}, pet-portal.bt/layer: platform }
+  {{- if $p.autoSync }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $p.platformWave | quote }}
+  {{- end }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: platform
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: {{ $.Values.targetRevision }}
+    path: platform/overlays/{{ $env }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pet-portal-{{ $env }}
+  syncPolicy:
+    {{- if $p.autoSync }}
+    automated: { prune: true, selfHeal: true }
+    {{- end }}
+    syncOptions: [ServerSideApply=true]
+    retry: { limit: 5, backoff: { duration: 10s, factor: 2, maxDuration: 3m } }
+{{- range $p.services }}
+---
+# {{ .name }} in {{ $env }}: the generic chart with this service's values.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}-{{ $env }}
+  namespace: argocd
+  labels: { pet-portal.bt/environment: {{ $env }}, pet-portal.bt/layer: service, pet-portal.bt/service: {{ .name }} }
+  {{- if $p.autoSync }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+  {{- end }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: pet-portal
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: {{ $.Values.targetRevision }}
+    path: charts/microservice
+    helm:
+      releaseName: {{ .name }}
+      valueFiles:
+        - ../../envs/{{ $env }}.yaml
+        - ../../apps/{{ .name }}/values.yaml
+        - ../../apps/{{ .name }}/values-{{ $env }}.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pet-portal-{{ $env }}
+  syncPolicy:
+    {{- if $p.autoSync }}
+    automated: { prune: true, selfHeal: true }
+    {{- end }}
+    syncOptions: [PruneLast=true, ApplyOutOfSyncOnly=true]
+    retry: { limit: 5, backoff: { duration: 10s, factor: 2, maxDuration: 3m } }
+  revisionHistoryLimit: 10
+{{- end }}
+{{- end }}

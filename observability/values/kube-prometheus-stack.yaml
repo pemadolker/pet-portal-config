@@ -1,0 +1,160 @@
+# kube-prometheus-stack 92.17.1: Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter.
+# Sized for one laptop (proposal section 11). Metrics are also what KEDA scales
+# adoption on, so this stack is part of the system, not an extra.
+crds:
+  enabled: true
+
+# Kind runs these control-plane parts on localhost only; scraping them just raises false alerts.
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 192Mi }
+
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 3d
+    retentionSize: 2GB
+    # Pick up every ServiceMonitor/PodMonitor/PrometheusRule in the cluster, not only this release's.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # Tempo's metrics generator writes service-graph and span metrics here.
+    enableRemoteWriteReceiver: true
+    enableFeatures: [exemplar-storage]
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { memory: 1Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources: { requests: { storage: 3Gi } }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 96Mi }
+  # Alerts go to the prod Mailpit inbox (works with no outside account). To also
+  # post to Discord, create the alertmanager-discord Secret (bootstrap/secrets.sh)
+  # and uncomment the discord receiver.
+  config:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: mailpit.pet-portal-prod.svc:1025
+      smtp_from: alertmanager@portal.local
+      smtp_require_tls: false
+    route:
+      receiver: team-email
+      group_by: [alertname, namespace, service]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers: [alertname = "Watchdog"]
+        - receiver: "null"
+          matchers: [alertname = "InfoInhibitor"]
+    receivers:
+      - name: "null"
+      - name: team-email
+        email_configs:
+          - to: oncall@portal.local
+            send_resolved: true
+        # discord_configs:
+        #   - webhook_url_file: /etc/alertmanager/secrets/alertmanager-discord/url
+        #     send_resolved: true
+    inhibit_rules:
+      - source_matchers: [severity = "critical"]
+        target_matchers: [severity = "warning"]
+        equal: [namespace, service]
+
+grafana:
+  admin:
+    existingSecret: grafana-admin          # made by bootstrap/secrets.sh
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false                         # dashboards and data sources are provisioned from Git, so nothing to keep
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [grafana.portal.local]
+    tls:
+      - { secretName: portal-tls, hosts: [grafana.portal.local] }
+  grafana.ini:
+    server:
+      root_url: https://grafana.portal.local
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+  # Logs and traces, linked both ways by trace id (proposal section 9).
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      url: http://loki.observability.svc:3100
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+          - name: trace_id
+            matcherRegex: '"trace_id":"(\w+)"'
+            url: "$${__value.raw}"
+            datasourceUid: tempo
+            urlDisplayLabel: View trace
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      url: http://tempo.observability.svc:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: -5m
+          spanEndTimeShift: 5m
+          filterByTraceID: true
+          customQuery: true
+          query: '{namespace=~"pet-portal-.*"} | json | trace_id="$${__trace.traceId}"'
+        tracesToMetrics:
+          datasourceUid: prometheus
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { memory: 128Mi }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 24Mi }
+    limits: { memory: 64Mi }

@@ -1,0 +1,14 @@
+# The namespace enforces the "restricted" Pod Security Standard: every pod must
+# run as non-root, drop all capabilities and use the runtime's seccomp profile.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pet-portal-dev
+  labels:
+    app.kubernetes.io/part-of: pet-portal      # lets these pods reach the shared etcd registry
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"

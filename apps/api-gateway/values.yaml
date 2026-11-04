@@ -1,0 +1,43 @@
+# 2. api-gateway (edge): Single entry to the backend: JWT check, rate limits, routing via the etcd registry.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: api-gateway
+group: edge
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 256Mi }
+nodeOptions: --max-old-space-size=160
+
+redis:
+  enabled: true
+
+# Services this one calls (sets <NAME>_URL and opens egress).
+upstreams:
+  - signup
+  - login
+  - profile
+  - pet
+  - search
+  - shelter
+  - favorites
+  - adoption
+  - review
+  - history
+  - notification
+  - reporting
+
+networkPolicy:
+  allowFrom: []
+  allowFromIngress: true
+
+env:
+  UPSTREAM_DISCOVERY: registry    # pod addresses from etcd; falls back to Service DNS
+  TRUST_PROXY: "true"             # client IP from the ingress controller's X-Real-IP
+  RATE_LIMIT_ENABLED: "true"
+secretFiles:
+  - { secret: jwt-keys, key: public.pem, path: /run/secrets/jwt/public.pem, env: JWT_PUBLIC_KEY_FILE }
+
+ingress:
+  enabled: true
+  paths:
+    - { path: /api, pathType: Prefix }

@@ -1,0 +1,100 @@
+# Mailpit catches every email email-worker sends, so no real address is ever
+# contacted (proposal section 4, out of scope). Its inbox is the evidence for
+# E4 ("exactly one email per queued email"). The web UI is behind basic auth
+# on the Ingress (mail.<host>); Alertmanager also sends alert emails here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit }
+spec:
+  selector: { app.kubernetes.io/name: mailpit }
+  ports:
+    - { name: smtp, port: 1025, targetPort: smtp }
+    - { name: http, port: 8025, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit }
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: mailpit }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: mailpit }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.33.0
+          env:
+            - { name: MP_MAX_MESSAGES, value: "5000" }
+            - { name: MP_DATABASE, value: /data/mailpit.db }
+          ports:
+            - { name: smtp, containerPort: 1025 }
+            - { name: http, containerPort: 8025 }
+          readinessProbe:
+            httpGet: { path: /livez, port: http }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: data, emptyDir: { sizeLimit: 256Mi } }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mailpit
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: mailpit-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Portal mail inbox"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mail.HOST]
+      secretName: portal-tls
+  rules:
+    - host: mail.HOST
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: mailpit, port: { name: http } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mailpit
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: mailpit }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: email-worker } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }   # Alertmanager
+      ports:
+        - { port: 1025, protocol: TCP }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+      ports:
+        - { port: 8025, protocol: TCP }
+  egress: []

@@ -1,0 +1,109 @@
+{{- if .Values.networkPolicy.enabled }}
+# Each portal namespace starts from deny-all (platform/base/networkpolicies.yaml).
+# This policy opens exactly the paths this service needs (proposal section 6):
+#   in:  from the services in networkPolicy.allowFrom, from the ingress controller
+#        (frontend and api-gateway only), and from Prometheus for /metrics
+#   out: DNS, its own data stores, the etcd registry, the OpenTelemetry Collector,
+#        and the services listed in upstreams
+# Experiment E9 checks that everything else is blocked.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ms.name" . }}
+  labels:
+    {{- include "ms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ms.name" . }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- if .Values.networkPolicy.allowFrom }}
+    - from:
+        {{- range .Values.networkPolicy.allowFrom }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
+      ports:
+        - { port: http, protocol: TCP }
+    {{- end }}
+    {{- if .Values.networkPolicy.allowFromIngress }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - { port: http, protocol: TCP }
+    {{- end }}
+    {{- if .Values.metrics.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - { port: {{ .Values.metrics.port }}, protocol: TCP }
+    {{- end }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    {{- if .Values.database.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - { port: 5432, protocol: TCP }
+    {{- end }}
+    {{- if .Values.redis.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - { port: 6379, protocol: TCP }
+    {{- end }}
+    {{- if .Values.registry.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: registry
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: registry-etcd
+      ports:
+        - { port: 2379, protocol: TCP }
+    {{- end }}
+    {{- if .Values.tracing.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - { port: 4318, protocol: TCP }
+    {{- end }}
+    {{- if .Values.upstreams }}
+    - to:
+        {{- range .Values.upstreams }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
+      ports:
+        - { port: 8080, protocol: TCP }
+    {{- end }}
+    {{- with .Values.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

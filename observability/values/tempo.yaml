@@ -1,0 +1,24 @@
+# Tempo 3.2.1 (grafana-community chart), single binary with local storage.
+# Traces are kept 48 h. The metrics generator turns spans into request-rate and
+# service-graph metrics in Prometheus, which feed the "Logs and traces" dashboard.
+fullnameOverride: tempo
+tempo:
+  retention: 48h
+  reportingEnabled: false
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: "0.0.0.0:4317" }
+        http: { endpoint: "0.0.0.0:4318" }
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/write
+persistence:
+  enabled: true
+  size: 2Gi
+serviceMonitor:
+  enabled: true
+  additionalLabels: { release: kube-prometheus-stack }

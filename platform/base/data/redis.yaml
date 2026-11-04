@@ -1,0 +1,113 @@
+# Redis: the event streams (Redis Streams) and the gateway's shared rate-limit
+# counters, one instance per environment (decision D1). Append-only file on a
+# volume so queued events survive a restart. noeviction: streams must never be
+# silently dropped when memory is short; writes fail loudly instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels: { app.kubernetes.io/name: redis }
+spec:
+  selector: { app.kubernetes.io/name: redis }
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+    - { name: metrics, port: 9121, targetPort: metrics }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  labels: { app.kubernetes.io/name: redis, app.kubernetes.io/component: event-store }
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: redis, app.kubernetes.io/component: event-store }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args: ["--appendonly", "yes", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction", "--dir", "/data"]
+          ports:
+            - { name: redis, containerPort: 6379 }
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: redis }
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+        - name: exporter
+          image: oliver006/redis_exporter:v1.97.0
+          env:
+            - { name: REDIS_ADDR, value: "redis://localhost:6379" }
+            # Per-stream length and consumer-group lag for the autoscaling dashboard.
+            - { name: REDIS_EXPORTER_CHECK_STREAMS, value: "*" }
+          ports:
+            - { name: metrics, containerPort: 9121 }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 48Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 59000
+            capabilities: { drop: ["ALL"] }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 1Gi } }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis
+  labels: { app.kubernetes.io/name: redis, release: kube-prometheus-stack }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  endpoints:
+    - { port: metrics, interval: 15s }
+---
+# Redis clients (services with redis.enabled) and the KEDA operator, which reads
+# email.queue's consumer-group lag to scale email-worker.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { pet-portal.bt/redis-client: "true" } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: keda } }
+      ports:
+        - { port: 6379, protocol: TCP }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+      ports:
+        - { port: 9121, protocol: TCP }
+  egress: []

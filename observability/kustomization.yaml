@@ -1,0 +1,8 @@
+# Dashboards, alert rules and the Argo CD scrape config, synced by the
+# "observability-config" Argo CD application.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - dashboards
+  - alerts/pet-portal-rules.yaml
+  - argocd-servicemonitor.yaml

@@ -1,0 +1,33 @@
+# Platform namespaces (proposal section 6, "Namespaces and isolation").
+# Pod Security levels: "restricted" wherever the workloads allow it; the log
+# collector (reads node log files), node-exporter (host metrics) and the ingress
+# controller (host ports on the Kind control plane) need "privileged".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+  labels: { pod-security.kubernetes.io/enforce: restricted, pod-security.kubernetes.io/warn: restricted }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+  labels: { pod-security.kubernetes.io/enforce: restricted, pod-security.kubernetes.io/warn: restricted }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels: { pod-security.kubernetes.io/enforce: privileged, pod-security.kubernetes.io/warn: baseline }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels: { pod-security.kubernetes.io/enforce: privileged, pod-security.kubernetes.io/warn: baseline }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels: { pod-security.kubernetes.io/enforce: privileged }

@@ -1,0 +1,22 @@
+# Checks every change before Argo CD can see it (proposal section 7):
+# helm lint/template, kustomize build, kubeconform, promtool rule tests.
+name: validate
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: v3.19.0 }
+      - name: Tools
+        run: |
+          mkdir -p "$HOME/bin" && cd "$HOME/bin"
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.7.1/kustomize_v5.7.1_linux_amd64.tar.gz" | tar xz
+          curl -sL https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.linux-amd64.tar.gz | tar xz --strip-components=1 prometheus-3.15.1.linux-amd64/promtool
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          pip install pyyaml
+      - run: scripts/validate.sh

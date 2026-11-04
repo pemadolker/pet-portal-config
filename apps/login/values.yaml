@@ -1,0 +1,26 @@
+# 4. login (identity): Verifies passwords (scrypt), issues RS256 access tokens and rotating refresh tokens.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: login
+group: identity
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 256Mi }
+nodeOptions: --max-old-space-size=160
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+# Services this one calls (sets <NAME>_URL and opens egress).
+upstreams:
+  - profile
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+    - signup
+
+secretFiles:
+  - { secret: jwt-keys, key: private.pem, path: /run/secrets/jwt/private.pem, env: JWT_PRIVATE_KEY_FILE }

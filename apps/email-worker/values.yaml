@@ -1,0 +1,21 @@
+# 14. email-worker (async): Sends queued emails through Mailpit; scales on stream lag.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: email-worker
+group: async
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom: []
+
+env:
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_RATE_PER_SECOND: "5"       # per pod, like a real provider's sending limit
+  MAIL_FROM: "Pet Adoption Portal <no-reply@portal.local>"
+extraEgress:
+  - to:
+      - podSelector: { matchLabels: { app.kubernetes.io/name: mailpit } }
+    ports:
+      - { port: 1025, protocol: TCP }

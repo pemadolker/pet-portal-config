@@ -1,0 +1,22 @@
+# Everything a portal namespace needs besides the 15 services: quotas, default
+# limits, deny-by-default networking, and its own PostgreSQL, Redis and Mailpit.
+# The overlays (dev, prod) set the namespace and the sizes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - resourcequota.yaml
+  - limitrange.yaml
+  - networkpolicies.yaml
+  - data/postgres.yaml
+  - data/db-bootstrap-job.yaml
+  - data/postgres-backup.yaml
+  - data/redis.yaml
+  - data/mailpit.yaml
+configMapGenerator:
+  - name: db-bootstrap-script
+    files: [data/bootstrap.sh]
+generatorOptions:
+  disableNameSuffixHash: false
+labels:
+  - pairs: { app.kubernetes.io/part-of: pet-portal }
+    includeSelectors: false

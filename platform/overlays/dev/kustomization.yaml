@@ -1,0 +1,32 @@
+# pet-portal-dev: the shared platform objects for this environment.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: pet-portal-dev
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - ../../base
+labels:
+  - pairs: { pet-portal.bt/environment: dev }
+    includeSelectors: false
+patches:
+  - target: { kind: ResourceQuota, name: portal-quota }
+    patch: |-
+      - op: replace
+        path: /spec/hard
+        value:
+          requests.cpu: "2"
+          requests.memory: 3Gi
+          limits.memory: 5Gi
+          pods: "40"
+          persistentvolumeclaims: "6"
+          services.loadbalancers: "0"
+          services.nodeports: "0"
+  - target: { kind: Ingress, name: mailpit }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: mail.dev.portal.local
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: mail.dev.portal.local

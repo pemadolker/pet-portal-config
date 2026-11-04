@@ -1,0 +1,16 @@
+# 12. history (core): Past applications per adopter, from application.decided events.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: history
+group: core
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway

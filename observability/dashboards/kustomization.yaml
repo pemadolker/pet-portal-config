@@ -1,0 +1,18 @@
+# Grafana dashboards as ConfigMaps. Grafana's sidecar loads every ConfigMap
+# labelled grafana_dashboard=1 into the "Pet Portal" folder. Rebuild the JSON
+# with `python3 build.py` after editing it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+generatorOptions:
+  disableNameSuffixHash: true
+  labels: { grafana_dashboard: "1" }
+  annotations: { grafana_folder: "Pet Portal" }
+configMapGenerator:
+  - { name: dashboard-cluster, files: [01-cluster.json] }
+  - { name: dashboard-namespaces, files: [02-namespaces.json] }
+  - { name: dashboard-services, files: [03-services.json] }
+  - { name: dashboard-adoption-rush, files: [04-adoption-rush.json] }
+  - { name: dashboard-autoscaling, files: [05-autoscaling.json] }
+  - { name: dashboard-data-stores, files: [06-data-stores.json] }
+  - { name: dashboard-logs-traces, files: [07-logs-traces.json] }

@@ -1,0 +1,28 @@
+# The cluster: Kind (Kubernetes in Docker) with 1 control plane and 3 workers
+# (proposal section 6). Kind's own network plugin does not enforce
+# NetworkPolicy, so it is disabled and Calico is installed instead.
+# The control plane carries only the ingress controller (host ports 80/443);
+# application pods run on the three workers.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: pet-portal
+networking:
+  disableDefaultCNI: true          # Calico instead
+  podSubnet: 192.168.0.0/16        # Calico's default pool
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - { containerPort: 80, hostPort: 80, protocol: TCP }
+      - { containerPort: 443, hostPort: 443, protocol: TCP }
+  - role: worker
+    labels: { pet-portal.bt/zone: a }
+  - role: worker
+    labels: { pet-portal.bt/zone: b }
+  - role: worker
+    labels: { pet-portal.bt/zone: c }

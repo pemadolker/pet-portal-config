@@ -1,0 +1,20 @@
+# 7. search (core): Finds and filters pets from a read model fed by events.
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: search
+group: core
+
+resources:
+  requests: { cpu: 100m, memory: 96Mi }
+  limits: { memory: 192Mi }
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+redis:
+  enabled: true
+
+networkPolicy:
+  allowFrom:
+    - api-gateway

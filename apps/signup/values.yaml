@@ -1,0 +1,24 @@
+# 3. signup (identity): Creates accounts (saga over shelter, login and profile).
+# Rendered with charts/microservice. Only differences from the chart defaults are listed.
+name: signup
+group: identity
+
+database:
+  enabled: true
+migration:
+  enabled: true
+
+# Services this one calls (sets <NAME>_URL and opens egress).
+upstreams:
+  - shelter
+  - login
+  - profile
+
+networkPolicy:
+  allowFrom:
+    - api-gateway
+
+# First admin account, created once from the bootstrap-admin Secret (no demo accounts exist).
+secretEnv:
+  - { name: BOOTSTRAP_ADMIN_EMAIL, secret: bootstrap-admin, key: email }
+  - { name: BOOTSTRAP_ADMIN_PASSWORD, secret: bootstrap-admin, key: password }

@@ -1,0 +1,184 @@
+# Recording and alerting rules for the portal (proposal section 9).
+# Every alert has a runbook section in docs/runbook.md with the same name.
+# E10 checks them by breaking something on purpose.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pet-portal
+  namespace: monitoring
+  labels: { release: kube-prometheus-stack }
+spec:
+  groups:
+    # ---------------------------------------------------------------- recording
+    - name: pet-portal.red
+      interval: 30s
+      rules:
+        - record: service:http_requests:rate1m
+          expr: sum by (namespace, service) (rate(http_requests_total{namespace=~"pet-portal-.*"}[1m]))
+        # "or 0 * ...": a service with no 5xx at all records 0, not nothing.
+        - record: service:http_errors:ratio5m
+          expr: |
+            (
+              sum by (namespace, service) (rate(http_requests_total{namespace=~"pet-portal-.*",status_code=~"5.."}[5m]))
+              or 0 * sum by (namespace, service) (rate(http_requests_total{namespace=~"pet-portal-.*"}[5m]))
+            )
+              / sum by (namespace, service) (rate(http_requests_total{namespace=~"pet-portal-.*"}[5m]))
+        - record: service:http_latency:p95_5m
+          expr: histogram_quantile(0.95, sum by (namespace, service, le) (rate(http_request_duration_seconds_bucket{namespace=~"pet-portal-.*"}[5m])))
+        - record: corepath:availability:ratio1h
+          expr: |
+            1 - (
+              (
+                sum by (namespace) (rate(http_requests_total{namespace=~"pet-portal-.*",service=~"frontend|api-gateway|login|pet|search|adoption",status_code=~"5.."}[1h]))
+                or 0 * sum by (namespace) (rate(http_requests_total{namespace=~"pet-portal-.*",service=~"frontend|api-gateway|login|pet|search|adoption"}[1h]))
+              )
+              / sum by (namespace) (rate(http_requests_total{namespace=~"pet-portal-.*",service=~"frontend|api-gateway|login|pet|search|adoption"}[1h]))
+            )
+
+    # ---------------------------------------------------------------- services
+    - name: pet-portal.services
+      rules:
+        - alert: ServiceHighErrorRate
+          expr: service:http_errors:ratio5m > 0.05 and on(namespace, service) service:http_requests:rate1m > 0.2
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.service }} in {{ $labels.namespace }}: {{ $value | humanizePercentage }} of requests fail"
+            description: More than 5 % of requests to this service returned 5xx for 5 minutes.
+            runbook: docs/runbook.md#servicehigherrorrate
+        - alert: ServiceHighLatency
+          expr: service:http_latency:p95_5m > 0.5 and on(namespace, service) service:http_requests:rate1m > 0.2
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.service }} in {{ $labels.namespace }}: p95 {{ $value | humanizeDuration }}"
+            description: The 95th percentile response time has been above 500 ms for 5 minutes (target in proposal section 12).
+            runbook: docs/runbook.md#servicehighlatency
+        - alert: ServiceNoReadyPods
+          expr: kube_deployment_status_replicas_ready{namespace=~"pet-portal-.*"} == 0 and kube_deployment_spec_replicas{namespace=~"pet-portal-.*"} > 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.deployment }} in {{ $labels.namespace }} has no ready pods"
+            runbook: docs/runbook.md#servicenoreadypods
+        - alert: PodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace=~"pet-portal-.*|registry|observability|monitoring"}[15m]) > 3
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted {{ $value | humanize }} times in 15 minutes"
+            runbook: docs/runbook.md#podcrashlooping
+        - alert: CorePathAvailabilityBelowTarget
+          expr: corepath:availability:ratio1h < 0.99
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Core path availability in {{ $labels.namespace }} is {{ $value | humanizePercentage }} over the last hour (target 99 %)"
+            runbook: docs/runbook.md#corepathavailabilitybelowtarget
+
+    # ---------------------------------------------------------------- scaling and capacity
+    - name: pet-portal.capacity
+      rules:
+        - alert: PortalQuotaNearlyUsed
+          expr: |
+            max by (namespace, resource) (kube_resourcequota{namespace=~"pet-portal-.*",type="used"})
+              / max by (namespace, resource) (kube_resourcequota{namespace=~"pet-portal-.*",type="hard"}) > 0.9
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.namespace }} uses {{ $value | humanizePercentage }} of its {{ $labels.resource }} quota"
+            runbook: docs/runbook.md#portalquotanearlyused
+        - alert: AdoptionAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="keda-hpa-adoption"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="keda-hpa-adoption"}
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "adoption in {{ $labels.namespace }} has been at its maximum of {{ $value }} pods for 5 minutes"
+            description: Load is above what the scaling plan allows. Latency will rise next. See the capacity plan.
+            runbook: docs/runbook.md#adoptionatmaxreplicas
+        - alert: EmailBacklogGrowing
+          expr: max by (namespace) (event_consumer_lag{stream="email.queue"}) > 100 and deriv(max by (namespace) (event_consumer_lag{stream="email.queue"})[10m:1m]) > 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value | humanize }} emails waiting in {{ $labels.namespace }} and the backlog is still growing"
+            runbook: docs/runbook.md#emailbackloggrowing
+        - alert: EventsDeadLettered
+          expr: sum by (namespace, stream) (increase(events_consumed_total{outcome="dead_lettered"}[15m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value | humanize }} events on {{ $labels.stream }} in {{ $labels.namespace }} failed 5 times and were moved to {{ $labels.stream }}.dlq"
+            runbook: docs/runbook.md#eventsdeadlettered
+        - alert: KedaScalerErrors
+          expr: sum by (scaledObject) (rate(keda_scaler_errors_total[5m])) > 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "KEDA cannot read the trigger for {{ $labels.scaledObject }}; it is not scaling"
+            runbook: docs/runbook.md#kedascalererrors
+
+    # ---------------------------------------------------------------- infrastructure
+    - name: pet-portal.infrastructure
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "Node {{ $labels.node }} is not ready"
+            runbook: docs/runbook.md#nodenotready
+        - alert: PostgresDown
+          expr: pg_up == 0
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "PostgreSQL in {{ $labels.namespace }} is down: every service that writes is failing"
+            runbook: docs/runbook.md#postgresdown
+        - alert: PostgresConnectionsNearlyExhausted
+          expr: sum by (namespace) (pg_stat_activity_count) / max by (namespace) (pg_settings_max_connections) > 0.85
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "PostgreSQL in {{ $labels.namespace }} is using {{ $value | humanizePercentage }} of max_connections"
+            runbook: docs/runbook.md#postgresconnectionsnearlyexhausted
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "Redis in {{ $labels.namespace }} is down: events and rate limits are unavailable"
+            runbook: docs/runbook.md#redisdown
+        - alert: RegistryMemberDown
+          expr: count(up{namespace="registry",service="registry-etcd"} == 1) < 3
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "Only {{ $value }} of 3 etcd registry members are up (quorum needs 2)"
+            runbook: docs/runbook.md#registrymemberdown
+        - alert: RegistryNoLeader
+          expr: max(etcd_server_has_leader{namespace="registry"}) == 0 or absent(etcd_server_has_leader{namespace="registry"})
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: The etcd registry has no leader; the gateway keeps routing from its last copy and through Service DNS
+            runbook: docs/runbook.md#registrynoleader
+
+    # ---------------------------------------------------------------- delivery
+    - name: pet-portal.delivery
+      rules:
+        - alert: ArgoAppOutOfSync
+          expr: argocd_app_info{sync_status!="Synced"} == 1
+          for: 30m
+          labels: { severity: info }
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} has been {{ $labels.sync_status }} for 30 minutes"
+            description: For prod this usually means a promoted release is waiting for its manual sync.
+            runbook: docs/runbook.md#argoappoutofsync
+        - alert: ArgoAppDegraded
+          expr: argocd_app_info{health_status=~"Degraded|Missing"} == 1
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} is {{ $labels.health_status }}"
+            runbook: docs/runbook.md#argoappdegraded
