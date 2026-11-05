@@ -3,7 +3,7 @@
 addons:
   - { name: ingress-nginx, namespace: ingress-nginx, wave: -3, repo: https://kubernetes.github.io/ingress-nginx, chart: ingress-nginx, version: 4.15.1, values: observability/values/ingress-nginx.yaml }
   - { name: metrics-server, namespace: kube-system, wave: -3, repo: https://kubernetes-sigs.github.io/metrics-server/, chart: metrics-server, version: 3.14.0, values: observability/values/metrics-server.yaml }
-  - { name: kube-prometheus-stack, namespace: monitoring, wave: -2, repo: https://prometheus-community.github.io/helm-charts, chart: kube-prometheus-stack, version: 92.17.1, values: observability/values/kube-prometheus-stack.yaml, serverSideApply: true }
+  - { name: kube-prometheus-stack, namespace: monitoring, wave: -5, repo: https://prometheus-community.github.io/helm-charts, chart: kube-prometheus-stack, version: 92.17.1, values: observability/values/kube-prometheus-stack.yaml, serverSideApply: true }
   - { name: keda, namespace: keda, wave: -2, repo: https://kedacore.github.io/charts, chart: keda, version: 2.21.0, values: observability/values/keda.yaml, serverSideApply: true }
   - { name: loki, namespace: observability, wave: -1, repo: https://grafana.github.io/helm-charts, chart: loki, version: 7.5.0, values: observability/values/loki.yaml }
   - { name: tempo, namespace: observability, wave: -1, repo: https://grafana-community.github.io/helm-charts, chart: tempo, version: 3.2.1, values: observability/values/tempo.yaml }
