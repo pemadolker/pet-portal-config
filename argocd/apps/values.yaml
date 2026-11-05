@@ -1,5 +1,5 @@
 # Shared by every root application.
-repoURL: https://github.com/CHANGE-ME/pet-portal-config.git   # bootstrap/configure.sh sets this
+repoURL: https://github.com/pemadolker/pet-portal-config.git   # bootstrap/configure.sh sets this
 targetRevision: main
 
 addons: []        # values-cluster.yaml

@@ -9,7 +9,7 @@ metadata:
 spec:
   project: platform
   source:
-    repoURL: https://github.com/CHANGE-ME/pet-portal-config.git
+    repoURL: https://github.com/pemadolker/pet-portal-config.git
     targetRevision: main
     path: argocd/apps
     helm:

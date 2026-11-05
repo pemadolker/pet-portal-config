@@ -1,7 +1,7 @@
 # Settings shared by every service in pet-portal-prod.
 global:
   environment: prod
-  imageRegistry: ghcr.io/CHANGE-ME/pet-portal     # bootstrap/configure.sh sets your GitHub org
+  imageRegistry: ghcr.io/pemadolker/pet-portal     # bootstrap/configure.sh sets your GitHub org
   ingressHost: portal.local
   logLevel: info
   tracing:

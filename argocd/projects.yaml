@@ -12,7 +12,7 @@ metadata:
 spec:
   description: Cluster add-ons and shared platform objects
   sourceRepos:
-    - https://github.com/CHANGE-ME/pet-portal-config.git
+    - https://github.com/pemadolker/pet-portal-config.git
     - https://prometheus-community.github.io/helm-charts
     - https://grafana.github.io/helm-charts
     - https://grafana-community.github.io/helm-charts
@@ -35,7 +35,7 @@ metadata:
 spec:
   description: The 15 Pet Adoption Portal services
   sourceRepos:
-    - https://github.com/CHANGE-ME/pet-portal-config.git
+    - https://github.com/pemadolker/pet-portal-config.git
   destinations:
     - { server: https://kubernetes.default.svc, namespace: pet-portal-dev }
     - { server: https://kubernetes.default.svc, namespace: pet-portal-prod }
