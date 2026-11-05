@@ -1,4 +1,4 @@
 # dev: one pod, auto-synced by Argo CD. CI writes image.tag here after every build of main.
 image:
-  tag: "a72e922"   # CI replaces this with the Git commit hash after each build of main
+  tag: "c839fcf"   # CI replaces this with the Git commit hash after each build of main
 replicas: 1
